@@ -9,41 +9,46 @@ import UIKit
 
 public class SnowflakesView: UIView {
 
-    var animator1: UIDynamicAnimator?
-    var animator2: UIDynamicAnimator?
-    var snowflakes: [UIView] = []
-    var gravityBehaviour1 = UIGravityBehavior()
-    var gravityBehaviour2 = UIGravityBehavior()
-    var gravityPullRight = false
+    private var numberOfSnowflakes: Int = 0
+    private var gravityPullRight: Bool = false
 
-    var timer: Timer?
+    private var animator1: UIDynamicAnimator!
+    private var animator2: UIDynamicAnimator!
+    private var gravityBehaviour1: UIGravityBehavior!
+    private var gravityBehaviour2: UIGravityBehavior!
 
-    override public init (frame : CGRect) {
-        super.init(frame : frame)
+    public override init(frame: CGRect) {
+        super.init(frame: frame)
         initGravityAnimator()
-        timer = Timer.scheduledTimer(timeInterval: Double(arc4random_uniform(100))/100, target: self, selector: #selector(changeGravityDirection), userInfo: nil, repeats: true)
+        scheduleGravityDirectionChange()
     }
 
-    required public init(coder aDecoder: NSCoder) {
-        fatalError("This class does not support NSCoding")
+    public required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        initGravityAnimator()
+        scheduleGravityDirectionChange()
     }
 
-    func initGravityAnimator() {
+    private func initGravityAnimator() {
+        gravityBehaviour1 = UIGravityBehavior()
         gravityBehaviour1.magnitude = 0.10
         gravityBehaviour1.gravityDirection.dx = 0.25
+
+        gravityBehaviour2 = UIGravityBehavior()
         gravityBehaviour2.magnitude = 0.20
         gravityBehaviour2.gravityDirection.dx = 0.25
 
-        self.animator1 = UIDynamicAnimator(referenceView: self)
-        self.animator1?.addBehavior(gravityBehaviour1)
+        animator1 = UIDynamicAnimator(referenceView: self)
+        animator1.addBehavior(gravityBehaviour1)
 
-        self.animator2 = UIDynamicAnimator(referenceView: self)
-        self.animator2?.addBehavior(gravityBehaviour2)
+        animator2 = UIDynamicAnimator(referenceView: self)
+        animator2.addBehavior(gravityBehaviour2)
     }
 
-    @objc
-    func changeGravityDirection() {
-        DispatchQueue.main.async {
+    private func scheduleGravityDirectionChange() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(Int.random(in: 0...1000))) { [weak self] in
+            guard let self = self else { return }
+
             if self.gravityPullRight { // Simulate wind, by changing gravity direction.
                 self.gravityBehaviour1.gravityDirection.dx += 0.4
                 self.gravityBehaviour2.gravityDirection.dx += 0.5
@@ -51,53 +56,52 @@ public class SnowflakesView: UIView {
                 self.gravityBehaviour1.gravityDirection.dx -= 0.4
                 self.gravityBehaviour2.gravityDirection.dx -= 0.5
             }
-            self.gravityPullRight = !self.gravityPullRight
-        }
-        if(self.snowflakes.count < 150) {
-            DispatchQueue.main.async {
-                self.addNewSnowflake()
+            self.gravityPullRight.toggle()
+
+            if self.numberOfSnowflakes < 150 {
+                DispatchQueue.main.async {
+                    self.addNewSnowflake()
+                }
             }
+
+            self.scheduleGravityDirectionChange()
         }
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(timeInterval: Double(arc4random_uniform(100))/100, target: self, selector: #selector(changeGravityDirection), userInfo: nil, repeats: true)
     }
 
-    func addNewSnowflake() {
-        let snowflakePosition = CGPoint(x: Int(arc4random_uniform(UInt32(self.bounds.width)) + 1), y: -Int(arc4random_uniform(200)))
-        let snowflake = Snowflake(position: snowflakePosition, minimumSize: 2, maximumSize: 4)
-        self.addSubview(snowflake)
+    private func addNewSnowflake() {
+        let size = CGFloat.random(in: 2...4)
+        let snowflake = Snowflake(frame: CGRect(
+            x: CGFloat.random(in: 0...bounds.width),
+            y: CGFloat.random(in: -200...0),
+            width: size,
+            height: size
+        ))
+        addSubview(snowflake)
 
         // Randomly assign the snowfalke to one of the two gravity environments.
-        if(Int(arc4random_uniform(2)) > 0) {
-            self.gravityBehaviour1.addItem(snowflake)
-        } else {
-            self.gravityBehaviour2.addItem(snowflake)
-        }
+        let gravityBehaviour = Bool.random() ? gravityBehaviour1 : gravityBehaviour2
+        gravityBehaviour!.addItem(snowflake)
 
-        snowflakes.append(snowflake)
+        numberOfSnowflakes += 1
         startSnowflakeLifecycle(snowflake)
     }
 
-    func startSnowflakeLifecycle(_ snowflake: UIView) {
-      DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(Int.random(in: 5000...6000))) {
+    private func startSnowflakeLifecycle(_ snowflake: UIView) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(Int.random(in: 5000..<6000))) { [weak self] in
+            guard let self = self else { return }
+
             // Remove the snowflake.
             self.gravityBehaviour1.removeItem(snowflake)
             self.gravityBehaviour2.removeItem(snowflake)
             snowflake.removeFromSuperview()
-            self.snowflakes = self.snowflakes.filter{ item in return item != snowflake }
-
+            self.numberOfSnowflakes -= 1
             // Spawn a new snowflake
             self.addNewSnowflake()
         }
     }
-    
-    override public func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+
+    public override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let hitView = super.hitTest(point, with: event)
-		
-		if hitView == self {
-			return nil
-		}
-		
-		return hitView
-	}
+        return hitView != self ? hitView : nil
+    }
 }
